@@ -19,5 +19,5 @@ export default async function LedgerPage() {
     supabase.from("investment_valuations").select("*").eq("household_id", householdId).order("value_date"),
     supabase.from("household_members").select("user_id, role, profiles(display_name)").eq("household_id", householdId),
   ]);
-  return <AppClient household={{ id: householdId, name: household.name, reportingCurrency: household.reporting_currency }} userId={user.id} entries={entries || []} proposals={proposals || []} investments={investments || []} valuations={valuations || []} members={members || []}/>;
+  return <AppClient household={{ id: householdId, name: household.name, reportingCurrency: household.reporting_currency }} userId={user.id} role={membership.role} entries={entries || []} proposals={proposals || []} investments={investments || []} valuations={valuations || []} members={members || []}/>;
 }
