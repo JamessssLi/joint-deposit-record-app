@@ -1,0 +1,47 @@
+import { describe, expect, it } from "vitest";
+import { proposalSchema } from "@/lib/validation/proposal";
+
+const base = {
+  householdId: "00000000-0000-4000-8000-000000000001",
+  currency: "USD" as const,
+  occurredAt: "2026-09-12",
+  title: "测试记录",
+  idempotencyKey: "00000000-0000-4000-8000-000000000002",
+};
+const investmentId = "00000000-0000-4000-8000-000000000003";
+
+describe("按提案类型校验 AC-02/05/21/76", () => {
+  it("共同消费必须有类别且金额为正", () => {
+    expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 100, category: "餐饮" }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 100 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 0, category: "餐饮" }).success).toBe(false);
+  });
+
+  it("买入必须有标的、数量及实际总扣款，参考价可选", () => {
+    const buy = { ...base, type: "investment_buy", amountMinor: 100_200, investmentId, quantityMilli: 100_000 };
+    expect(proposalSchema.safeParse(buy).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...buy, quantityMilli: undefined }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...buy, amountMinor: 0 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...buy, unitPriceMinor: 1000 }).success).toBe(true);
+  });
+
+  it("卖出允许净到账为零，但不允许负数或缺数量", () => {
+    const sell = { ...base, type: "investment_sell", amountMinor: 0, investmentId, quantityMilli: 10_000 };
+    expect(proposalSchema.safeParse(sell).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...sell, amountMinor: -1 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...sell, quantityMilli: undefined }).success).toBe(false);
+  });
+
+  it("分红必须关联标的；估值金额固定为零且必须有单位估值", () => {
+    expect(proposalSchema.safeParse({ ...base, type: "dividend", amountMinor: 500, investmentId }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "dividend", amountMinor: 500 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 0, investmentId, unitValueMinor: 1234 }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 1, investmentId, unitValueMinor: 1234 }).success).toBe(false);
+  });
+
+  it("拒绝多余字段、非UUID幂等键和非法日期文本", () => {
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, unexpected: true }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, idempotencyKey: "draft-1" }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, occurredAt: "09/12/2026" }).success).toBe(false);
+  });
+});

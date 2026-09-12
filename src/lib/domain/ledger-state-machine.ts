@@ -2,7 +2,7 @@ export type ProposalStatus =
   | "draft"
   | "pending_approval"
   | "overdue_pending"
-  | "posted"
+  | "approved"
   | "rejected"
   | "withdrawn"
   | "deleted_draft";
@@ -11,9 +11,9 @@ export type ProposalAction = "submit" | "approve" | "reject" | "withdraw" | "mar
 
 const transitions: Record<ProposalStatus, Partial<Record<ProposalAction, ProposalStatus>>> = {
   draft: { submit: "pending_approval", deleteDraft: "deleted_draft" },
-  pending_approval: { approve: "posted", reject: "rejected", withdraw: "withdrawn", markOverdue: "overdue_pending" },
-  overdue_pending: { approve: "posted", reject: "rejected", withdraw: "withdrawn" },
-  posted: {},
+  pending_approval: { approve: "approved", reject: "rejected", withdraw: "withdrawn", markOverdue: "overdue_pending" },
+  overdue_pending: { approve: "approved", reject: "rejected", withdraw: "withdrawn" },
+  approved: {},
   rejected: {},
   withdrawn: {},
   deleted_draft: {},
