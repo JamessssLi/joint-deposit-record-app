@@ -17,8 +17,8 @@ describe("多币种账务计算", () => {
 
   it("成员代付计入共同消费但不改变共同现金", () => {
     const events: LedgerEvent[] = [
-      { id: "1", type: "reimbursement", amountMinor: 3000, currency: "USD", status: posted, occurredAt: "2026-09-01", memberId: "linzhixia", category: "家居" },
-      { id: "2", type: "settlement", amountMinor: 1000, currency: "USD", status: posted, occurredAt: "2026-09-02", memberId: "linzhixia" },
+      { id: "1", type: "reimbursement", amountMinor: 3000, currency: "USD", status: posted, occurredAt: "2026-09-01", payerMemberId: "00000000-0000-4000-8000-000000000001", category: "家居" },
+      { id: "2", type: "settlement", amountMinor: 1000, currency: "USD", status: posted, occurredAt: "2026-09-02", payeeMemberId: "00000000-0000-4000-8000-000000000001" },
     ];
     expect(cashBalance(events, "USD")).toBe(-1000);
     expect(expenseTotalReporting(events, "USD", rates)).toBe(3000);
@@ -27,9 +27,9 @@ describe("多币种账务计算", () => {
   });
 
   it("审批中的报销会预留可再申请额度", () => {
-    const events: LedgerEvent[] = [{ id: "1", type: "reimbursement", amountMinor: 5000, currency: "USD", status: posted, occurredAt: "2026-09-01", memberId: "guyan" }];
-    const proposals = [{ status: "overdue_pending", payload: { type: "settlement" as const, amountMinor: 2000, currency: "USD" as const, memberId: "guyan" as const } }];
-    const row = reimbursementSummary(events, proposals).find((item) => item.memberId === "guyan" && item.currency === "USD");
+    const events: LedgerEvent[] = [{ id: "1", type: "reimbursement", amountMinor: 5000, currency: "USD", status: posted, occurredAt: "2026-09-01", payerMemberId: "00000000-0000-4000-8000-000000000002" }];
+    const proposals = [{ status: "overdue_pending", payload: { type: "settlement" as const, amountMinor: 2000, currency: "USD" as const, payeeMemberId: "00000000-0000-4000-8000-000000000002" as const } }];
+    const row = reimbursementSummary(events, proposals).find((item) => item.memberId === "00000000-0000-4000-8000-000000000002" && item.currency === "USD");
     expect(row?.pendingMinor).toBe(2000);
     expect(row?.availableMinor).toBe(3000);
   });
