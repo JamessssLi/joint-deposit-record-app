@@ -263,56 +263,14 @@ begin
 end;
 $$;
 
-create or replace function public.set_investment_price_1e4(target_investment uuid, value_date_input date, price_1e4 bigint, note_input text default null) returns uuid
-language plpgsql security definer set search_path=pg_catalog,public as $$
-declare
-  inv public.investments;
-  valuation_id uuid;
-begin
-  if value_date_input is null or value_date_input > current_date then raise exception 'invalid valuation date'; end if;
-  if price_1e4 is null or price_1e4 <= 0 or price_1e4 > 999999999999 then raise exception 'invalid price update'; end if;
-  if note_input is not null and length(note_input) > 300 then raise exception 'note exceeds limit'; end if;
-
-  select * into inv from public.investments where id=target_investment for update;
-  if inv.id is null then raise exception 'investment not found'; end if;
-  perform public.require_active_household(inv.household_id);
-  if inv.archived_at is not null then raise exception 'invalid price update'; end if;
-
-  insert into public.investment_valuations(
-    household_id,investment_id,value_date,unit_value_minor,unit_value_1e4,currency,note,created_by,source
-  ) values (
-    inv.household_id,inv.id,value_date_input,round(price_1e4::numeric/100)::bigint,price_1e4,inv.currency,note_input,auth.uid(),'manual_direct'
-  ) returning id into valuation_id;
-
-  update public.investments
-  set latest_price_minor=round(price_1e4::numeric/100)::bigint,
-      latest_price_1e4=price_1e4,
-      latest_price_updated_at=now(),
-      latest_price_updated_by=auth.uid()
-  where id=inv.id;
-
-  insert into public.audit_logs(household_id,actor_id,action,entity_type,entity_id,detail)
-  values(inv.household_id,auth.uid(),'set_price','investment',inv.id,jsonb_build_object('valueDate',value_date_input,'price1e4',price_1e4));
-  return valuation_id;
-end;
-$$;
-
-create or replace function public.set_investment_price(target_investment uuid, value_date_input date, price_minor bigint, note_input text default null) returns uuid
-language plpgsql security definer set search_path=pg_catalog,public as $$
-begin
-  if price_minor is null or price_minor > 9999999999 then raise exception 'invalid price update'; end if;
-  return public.set_investment_price_1e4(target_investment,value_date_input,price_minor*100,note_input);
-end;
-$$;
+-- Price changes use investment_valuation proposals. Remove the legacy direct-write entry points.
+drop function if exists public.set_investment_price_1e4(uuid,date,bigint,text);
+drop function if exists public.set_investment_price(uuid,date,bigint,text);
 
 revoke all on function public.shares_active_household(uuid) from public;
 revoke all on function public.validate_proposal_payload(uuid,jsonb) from public;
 revoke all on function public.submit_proposal(uuid,jsonb,uuid) from public;
 revoke all on function public.decide_proposal(uuid,boolean,text) from public;
-revoke all on function public.set_investment_price_1e4(uuid,date,bigint,text) from public;
-revoke all on function public.set_investment_price(uuid,date,bigint,text) from public;
 grant execute on function public.shares_active_household(uuid) to authenticated;
 grant execute on function public.submit_proposal(uuid,jsonb,uuid) to authenticated;
 grant execute on function public.decide_proposal(uuid,boolean,text) to authenticated;
-grant execute on function public.set_investment_price_1e4(uuid,date,bigint,text) to authenticated;
-grant execute on function public.set_investment_price(uuid,date,bigint,text) to authenticated;
