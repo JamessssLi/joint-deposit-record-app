@@ -62,19 +62,24 @@ describe("P1 投资重放 AC-03/69/76/77", () => {
 
 describe("P1 人工估值缺失与排序 AC-24", () => {
   const position = calculateInvestmentPosition([event()], "X");
-  const price = { id: A, valueDate: "2026-09-01", createdAt: "2026-09-01T12:00:00Z", unitValueMinor: 1200 };
+  const price = { id: A, valueDate: "2026-09-01", createdAt: "2026-09-01T12:00:00Z", unitValueTenThousandths: 120000 };
   it("缺价格按剩余成本暂估，不显示假零市值或假收益", () => {
     expect(valuePosition(position)).toEqual({ marketMinor: 100000, unrealizedGainMinor: null, source: "cost_estimate" });
   });
   it("真实零估值与缺价格不同", () => {
-    expect(valuePosition(position, { ...price, unitValueMinor: 0 })).toEqual({ marketMinor: 0, unrealizedGainMinor: -100000, source: "manual" });
+    expect(valuePosition(position, { ...price, unitValueTenThousandths: 0 })).toEqual({ marketMinor: 0, unrealizedGainMinor: -100000, source: "manual" });
   });
   it("同日按创建时间/ID选最新，与返回列表排序无关", () => {
-    const sameTime = { ...price, id: B, unitValueMinor: 1400 };
-    const earlier = { ...price, createdAt: "2026-09-01T11:00:00Z", unitValueMinor: 1100 };
+    const sameTime = { ...price, id: B, unitValueTenThousandths: 140000 };
+    const earlier = { ...price, createdAt: "2026-09-01T11:00:00Z", unitValueTenThousandths: 110000 };
     expect(latestValuation([sameTime, earlier, price])).toEqual(sameTime);
     expect(latestValuation([price, earlier, sameTime])).toEqual(sameTime);
     expect(valuePosition(position, sameTime).marketMinor).toBe(140000);
+  });
+
+  it("以四位单位价格精确计算 I-03 市值", () => {
+    const position = { quantityMilli: 100000, remainingCostMinor: 12345, realizedGainMinor: 0, dividendMinor: 0 };
+    expect(valuePosition(position, { ...price, unitValueTenThousandths: 12345 })).toEqual({ marketMinor: 12345, unrealizedGainMinor: 0, source: "manual" });
   });
 });
 

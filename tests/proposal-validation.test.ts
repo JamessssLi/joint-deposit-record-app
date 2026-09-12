@@ -22,7 +22,8 @@ describe("按提案类型校验 AC-02/05/21/76", () => {
     expect(proposalSchema.safeParse(buy).success).toBe(true);
     expect(proposalSchema.safeParse({ ...buy, quantityMilli: undefined }).success).toBe(false);
     expect(proposalSchema.safeParse({ ...buy, amountMinor: 0 }).success).toBe(false);
-    expect(proposalSchema.safeParse({ ...buy, unitPriceMinor: 1000 }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...buy, unitPriceTenThousandths: 100000 }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...buy, unitPriceMinor: 1000 }).success).toBe(false);
   });
 
   it("卖出允许净到账为零，但不允许负数或缺数量", () => {
@@ -35,8 +36,8 @@ describe("按提案类型校验 AC-02/05/21/76", () => {
   it("分红必须关联标的；估值金额固定为零且必须有单位估值", () => {
     expect(proposalSchema.safeParse({ ...base, type: "dividend", amountMinor: 500, investmentId }).success).toBe(true);
     expect(proposalSchema.safeParse({ ...base, type: "dividend", amountMinor: 500 }).success).toBe(false);
-    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 0, investmentId, unitValueMinor: 1234 }).success).toBe(true);
-    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 1, investmentId, unitValueMinor: 1234 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 0, investmentId, unitValueTenThousandths: 123400 }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "investment_valuation", amountMinor: 1, investmentId, unitValueTenThousandths: 123400 }).success).toBe(false);
   });
 
   it("拒绝多余字段、非UUID幂等键和非法日期文本", () => {

@@ -2,6 +2,14 @@
 alter table public.ledger_entries add column if not exists effective_sequence bigint;
 alter table public.ledger_entries add column if not exists payer_member_id uuid references public.profiles(id);
 alter table public.ledger_entries add column if not exists payee_member_id uuid references public.profiles(id);
+alter table public.ledger_entries add column if not exists unit_price_1e4 bigint;
+alter table public.investment_valuations add column if not exists unit_value_1e4 bigint;
+alter table public.investments add column if not exists latest_price_1e4 bigint;
+
+update public.ledger_entries set unit_price_1e4=unit_price_minor*100 where unit_price_1e4 is null and unit_price_minor is not null;
+update public.investment_valuations set unit_value_1e4=unit_value_minor*100 where unit_value_1e4 is null;
+update public.investments set latest_price_1e4=latest_price_minor*100 where latest_price_1e4 is null and latest_price_minor is not null;
+alter table public.investment_valuations alter column unit_value_1e4 set not null;
 
 with ranked as (
   select id, row_number() over (partition by household_id order by occurred_at, created_at, id) as sequence
@@ -24,6 +32,12 @@ alter table public.ledger_entries add constraint ledger_entries_trade_quantity_c
   check (entry_type not in ('investment_buy','investment_sell') or (quantity_milli is not null and quantity_milli > 0)) not valid;
 alter table public.ledger_entries add constraint ledger_entries_reference_price_check
   check (unit_price_minor is null or unit_price_minor > 0) not valid;
+alter table public.ledger_entries add constraint ledger_entries_reference_price_1e4_check
+  check (unit_price_1e4 is null or unit_price_1e4 > 0) not valid;
+alter table public.investment_valuations add constraint investment_valuations_value_1e4_check
+  check (unit_value_1e4 > 0) not valid;
+alter table public.investments add constraint investments_latest_price_1e4_check
+  check (latest_price_1e4 is null or latest_price_1e4 > 0) not valid;
 
 create or replace function public.shares_active_household(target_user uuid) returns boolean
 language sql stable security definer set search_path=pg_catalog,public as $$
@@ -43,14 +57,14 @@ declare
   payload_type text;
   amount bigint;
   quantity bigint;
-  reference_price bigint;
-  valuation bigint;
+  reference_price_1e4 bigint;
+  valuation_1e4 bigint;
   investment_uuid uuid;
 begin
   if payload_input is null or jsonb_typeof(payload_input) <> 'object' then raise exception 'invalid payload'; end if;
   if exists(
     select 1 from jsonb_object_keys(payload_input) as payload_key(key)
-    where key not in ('type','amountMinor','currency','occurredAt','title','category','investmentId','quantityMilli','unitPriceMinor','unitValueMinor','payerMemberId','payeeMemberId')
+    where key not in ('type','amountMinor','currency','occurredAt','title','category','investmentId','quantityMilli','unitPriceMinor','unitValueMinor','unitPriceTenThousandths','unitValueTenThousandths','payerMemberId','payeeMemberId')
   ) then raise exception 'unexpected payload field'; end if;
 
   if jsonb_typeof(payload_input->'type') is distinct from 'string' then raise exception 'invalid type'; end if;
@@ -85,8 +99,10 @@ begin
 
   if payload_input ? 'investmentId' and payload_type not in ('investment_buy','investment_sell','dividend','investment_valuation') then raise exception 'investment is not allowed'; end if;
   if payload_input ? 'quantityMilli' and payload_type not in ('investment_buy','investment_sell') then raise exception 'quantity is not allowed'; end if;
-  if payload_input ? 'unitPriceMinor' and payload_type not in ('investment_buy','investment_sell') then raise exception 'reference price is not allowed'; end if;
-  if payload_input ? 'unitValueMinor' and payload_type <> 'investment_valuation' then raise exception 'valuation is not allowed'; end if;
+  if payload_input ? 'unitPriceMinor' and payload_input ? 'unitPriceTenThousandths' then raise exception 'ambiguous reference price'; end if;
+  if payload_input ? 'unitValueMinor' and payload_input ? 'unitValueTenThousandths' then raise exception 'ambiguous valuation'; end if;
+  if (payload_input ? 'unitPriceMinor' or payload_input ? 'unitPriceTenThousandths') and payload_type not in ('investment_buy','investment_sell') then raise exception 'reference price is not allowed'; end if;
+  if (payload_input ? 'unitValueMinor' or payload_input ? 'unitValueTenThousandths') and payload_type <> 'investment_valuation' then raise exception 'valuation is not allowed'; end if;
   if payload_input ? 'payerMemberId' and payload_type <> 'reimbursement' then raise exception 'payer is not allowed'; end if;
   if payload_input ? 'payeeMemberId' and payload_type <> 'settlement' then raise exception 'payee is not allowed'; end if;
 
@@ -100,17 +116,28 @@ begin
     if jsonb_typeof(payload_input->'quantityMilli') is distinct from 'number' then raise exception 'quantity is required'; end if;
     quantity := (payload_input->>'quantityMilli')::bigint;
     if quantity <= 0 or quantity > 9999999999999 then raise exception 'invalid quantity'; end if;
-    if payload_input ? 'unitPriceMinor' then
-      if jsonb_typeof(payload_input->'unitPriceMinor') is distinct from 'number' then raise exception 'invalid reference price'; end if;
-      reference_price := (payload_input->>'unitPriceMinor')::bigint;
-      if reference_price <= 0 or reference_price > 9999999999 then raise exception 'invalid reference price'; end if;
+    if payload_input ? 'unitPriceTenThousandths' then
+      if jsonb_typeof(payload_input->'unitPriceTenThousandths') is distinct from 'number' then raise exception 'invalid reference price'; end if;
+      reference_price_1e4 := (payload_input->>'unitPriceTenThousandths')::bigint;
+      if reference_price_1e4 <= 0 or reference_price_1e4 > 999999999999 then raise exception 'invalid reference price'; end if;
+    elsif payload_input ? 'unitPriceMinor' then
+      if jsonb_typeof(payload_input->'unitPriceMinor') is distinct from 'number' then raise exception 'invalid legacy reference price'; end if;
+      reference_price_1e4 := (payload_input->>'unitPriceMinor')::bigint*100;
+      if reference_price_1e4 <= 0 or reference_price_1e4 > 999999999999 then raise exception 'invalid legacy reference price'; end if;
     end if;
   end if;
 
   if payload_type = 'investment_valuation' then
-    if jsonb_typeof(payload_input->'unitValueMinor') is distinct from 'number' then raise exception 'valuation is required'; end if;
-    valuation := (payload_input->>'unitValueMinor')::bigint;
-    if valuation <= 0 or valuation > 9999999999 then raise exception 'invalid valuation'; end if;
+    if payload_input ? 'unitValueTenThousandths' then
+      if jsonb_typeof(payload_input->'unitValueTenThousandths') is distinct from 'number' then raise exception 'invalid valuation'; end if;
+      valuation_1e4 := (payload_input->>'unitValueTenThousandths')::bigint;
+    elsif payload_input ? 'unitValueMinor' then
+      if jsonb_typeof(payload_input->'unitValueMinor') is distinct from 'number' then raise exception 'invalid legacy valuation'; end if;
+      valuation_1e4 := (payload_input->>'unitValueMinor')::bigint*100;
+    else
+      raise exception 'valuation is required';
+    end if;
+    if valuation_1e4 <= 0 or valuation_1e4 > 999999999999 then raise exception 'invalid valuation'; end if;
   end if;
 
   if payload_input ? 'payerMemberId' and (
@@ -157,6 +184,8 @@ declare
   payload_type text;
   amount bigint;
   quantity bigint;
+  reference_price_1e4 bigint;
+  valuation_1e4 bigint;
   next_sequence bigint;
 begin
   select * into p from public.proposals where id=proposal_uuid for update;
@@ -194,23 +223,32 @@ begin
   end if;
 
   if payload_type='investment_valuation' then
-    insert into public.investment_valuations(household_id,investment_id,proposal_id,value_date,unit_value_minor,currency,note,created_by)
-    values(p.household_id,inv.id,p.id,(p.payload->>'occurredAt')::date,(p.payload->>'unitValueMinor')::bigint,p.payload->>'currency',p.payload->>'title',p.submitter_id)
+    valuation_1e4 := coalesce(
+      nullif(p.payload->>'unitValueTenThousandths','')::bigint,
+      nullif(p.payload->>'unitValueMinor','')::bigint*100
+    );
+    insert into public.investment_valuations(household_id,investment_id,proposal_id,value_date,unit_value_minor,unit_value_1e4,currency,note,created_by)
+    values(p.household_id,inv.id,p.id,(p.payload->>'occurredAt')::date,round(valuation_1e4::numeric/100)::bigint,valuation_1e4,p.payload->>'currency',p.payload->>'title',p.submitter_id)
     returning id into entry_uuid;
   else
     amount := (p.payload->>'amountMinor')::bigint;
     if payload_type in ('investment_buy','investment_sell') then
       quantity := (p.payload->>'quantityMilli')::bigint;
+      reference_price_1e4 := coalesce(
+        nullif(p.payload->>'unitPriceTenThousandths','')::bigint,
+        nullif(p.payload->>'unitPriceMinor','')::bigint*100
+      );
       if payload_type='investment_sell' and quantity > public.current_investment_quantity(inv.id) then raise exception 'sell quantity exceeds confirmed holding'; end if;
     end if;
     select coalesce(max(effective_sequence),0)+1 into next_sequence from public.ledger_entries where household_id=p.household_id;
     insert into public.ledger_entries(
       household_id,proposal_id,entry_type,amount_minor,currency,occurred_at,effective_sequence,title,category,
-      member_id,payer_member_id,payee_member_id,investment_id,quantity_milli,unit_price_minor
+      member_id,payer_member_id,payee_member_id,investment_id,quantity_milli,unit_price_minor,unit_price_1e4
     ) values (
       p.household_id,p.id,payload_type,amount,p.payload->>'currency',(p.payload->>'occurredAt')::date,next_sequence,p.payload->>'title',p.payload->>'category',
       p.submitter_id,nullif(p.payload->>'payerMemberId','')::uuid,nullif(p.payload->>'payeeMemberId','')::uuid,
-      nullif(p.payload->>'investmentId','')::uuid,nullif(p.payload->>'quantityMilli','')::bigint,nullif(p.payload->>'unitPriceMinor','')::bigint
+      nullif(p.payload->>'investmentId','')::uuid,nullif(p.payload->>'quantityMilli','')::bigint,
+      case when reference_price_1e4 is null then null else round(reference_price_1e4::numeric/100)::bigint end,reference_price_1e4
     ) returning id into entry_uuid;
   end if;
 
@@ -221,10 +259,56 @@ begin
 end;
 $$;
 
+create or replace function public.set_investment_price_1e4(target_investment uuid, value_date_input date, price_1e4 bigint, note_input text default null) returns uuid
+language plpgsql security definer set search_path=pg_catalog,public as $$
+declare
+  inv public.investments;
+  valuation_id uuid;
+begin
+  if value_date_input is null or value_date_input > current_date then raise exception 'invalid valuation date'; end if;
+  if price_1e4 is null or price_1e4 <= 0 or price_1e4 > 999999999999 then raise exception 'invalid price update'; end if;
+  if note_input is not null and length(note_input) > 300 then raise exception 'note exceeds limit'; end if;
+
+  select * into inv from public.investments where id=target_investment for update;
+  if inv.id is null then raise exception 'investment not found'; end if;
+  perform public.require_active_household(inv.household_id);
+  if inv.archived_at is not null then raise exception 'invalid price update'; end if;
+
+  insert into public.investment_valuations(
+    household_id,investment_id,value_date,unit_value_minor,unit_value_1e4,currency,note,created_by,source
+  ) values (
+    inv.household_id,inv.id,value_date_input,round(price_1e4::numeric/100)::bigint,price_1e4,inv.currency,note_input,auth.uid(),'manual_direct'
+  ) returning id into valuation_id;
+
+  update public.investments
+  set latest_price_minor=round(price_1e4::numeric/100)::bigint,
+      latest_price_1e4=price_1e4,
+      latest_price_updated_at=now(),
+      latest_price_updated_by=auth.uid()
+  where id=inv.id;
+
+  insert into public.audit_logs(household_id,actor_id,action,entity_type,entity_id,detail)
+  values(inv.household_id,auth.uid(),'set_price','investment',inv.id,jsonb_build_object('valueDate',value_date_input,'price1e4',price_1e4));
+  return valuation_id;
+end;
+$$;
+
+create or replace function public.set_investment_price(target_investment uuid, value_date_input date, price_minor bigint, note_input text default null) returns uuid
+language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+  if price_minor is null or price_minor > 9999999999 then raise exception 'invalid price update'; end if;
+  return public.set_investment_price_1e4(target_investment,value_date_input,price_minor*100,note_input);
+end;
+$$;
+
 revoke all on function public.shares_active_household(uuid) from public;
 revoke all on function public.validate_proposal_payload(uuid,jsonb) from public;
 revoke all on function public.submit_proposal(uuid,jsonb,uuid) from public;
 revoke all on function public.decide_proposal(uuid,boolean,text) from public;
+revoke all on function public.set_investment_price_1e4(uuid,date,bigint,text) from public;
+revoke all on function public.set_investment_price(uuid,date,bigint,text) from public;
 grant execute on function public.shares_active_household(uuid) to authenticated;
 grant execute on function public.submit_proposal(uuid,jsonb,uuid) to authenticated;
 grant execute on function public.decide_proposal(uuid,boolean,text) to authenticated;
+grant execute on function public.set_investment_price_1e4(uuid,date,bigint,text) to authenticated;
+grant execute on function public.set_investment_price(uuid,date,bigint,text) to authenticated;

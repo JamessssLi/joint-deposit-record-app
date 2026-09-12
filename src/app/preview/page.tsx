@@ -27,6 +27,6 @@ export default function PreviewPage() {
     { id: ETF, name: "标普 500 ETF", currency: "USD", opening_quantity_milli: 0, opening_cost_minor: 0 },
     { id: FUND, name: "人民币指数基金", currency: "CNY", opening_quantity_milli: 0, opening_cost_minor: 0 },
   ];
-  const valuations = [{ id: "00000000-0000-4000-8000-000000000401", investment_id: ETF, value_date: "2026-09-07", created_at: at("2026-09-07", "09:00"), unit_value_minor: 1200 }];
+  const valuations = [{ id: "00000000-0000-4000-8000-000000000401", investment_id: ETF, value_date: "2026-09-07", created_at: at("2026-09-07", "09:00"), unit_value_minor: 1200, unit_value_1e4: 120000 }];
   return <PreviewClient entries={entries} proposals={proposals} investments={investments} valuations={valuations}/>;
 }

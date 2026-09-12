@@ -48,7 +48,7 @@ export function InvestmentList({ investments, valuations, entries, currency, ope
     let latest;
     try {
       position = calculateInvestmentPosition(records.map(ledgerEventFromRow), id, Number(investment.opening_quantity_milli), Number(investment.opening_cost_minor));
-      latest = latestValuation(valuations.filter((value) => value.investment_id === id).map((value) => ({ id: String(value.id), valueDate: String(value.value_date), createdAt: String(value.created_at), unitValueMinor: Number(value.unit_value_minor) })));
+      latest = latestValuation(valuations.filter((value) => value.investment_id === id).map((value) => ({ id: String(value.id), valueDate: String(value.value_date), createdAt: String(value.created_at), unitValueTenThousandths: Number(value.unit_value_1e4 ?? Number(value.unit_value_minor) * 100) })));
       valuation = valuePosition(position, latest);
     } catch (error) {
       return <article key={id} className="rounded-2xl border bg-white p-5"><b>{String(investment.name)}</b><p className="mt-2 text-sm text-red-700">{error instanceof Error ? error.message : "投资流水需核对"}</p></article>;
@@ -80,8 +80,8 @@ export function RecordModal({ close, household, investments, refresh, setMessage
         category: ["expense", "reimbursement"].includes(type) ? category : undefined,
         investmentId: investmentId || undefined,
         quantityMilli: quantity ? parseFixedDecimal(quantity, 3, { label: "份额" }) : undefined,
-        unitPriceMinor: price && ["investment_buy", "investment_sell"].includes(type) ? Math.round(Number(price) * 100) : undefined,
-        unitValueMinor: type === "investment_valuation" ? Math.round(Number(price) * 100) : undefined,
+        unitPriceTenThousandths: price && ["investment_buy", "investment_sell"].includes(type) ? parseFixedDecimal(price, 4, { label: "参考成交单价" }) : undefined,
+        unitValueTenThousandths: type === "investment_valuation" ? parseFixedDecimal(price, 4, { label: "单位估值" }) : undefined,
         idempotencyKey,
       };
       if (readOnly) {

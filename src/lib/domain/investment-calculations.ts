@@ -32,7 +32,7 @@ export function calculateInvestmentPosition(events: LedgerEvent[], investmentId:
   }, { quantityMilli: openingQuantityMilli, remainingCostMinor: openingCostMinor, realizedGainMinor: 0, dividendMinor: 0 });
 }
 
-export type UnitValuation = { id: string; valueDate: string; createdAt: string; unitValueMinor: number };
+export type UnitValuation = { id: string; valueDate: string; createdAt: string; unitValueTenThousandths: number };
 
 export function latestValuation(valuations: UnitValuation[]): UnitValuation | undefined {
   return [...valuations].sort((a, b) => {
@@ -48,6 +48,6 @@ export function latestValuation(valuations: UnitValuation[]): UnitValuation | un
 export function valuePosition(position: InvestmentPosition, valuation?: UnitValuation) {
   if (!position.quantityMilli) return { marketMinor: 0, unrealizedGainMinor: 0, source: "closed" as const };
   if (!valuation) return { marketMinor: position.remainingCostMinor, unrealizedGainMinor: null, source: "cost_estimate" as const };
-  const marketMinor = roundRatio(position.quantityMilli, valuation.unitValueMinor, 1000);
+  const marketMinor = roundRatio(position.quantityMilli, valuation.unitValueTenThousandths, 100_000);
   return { marketMinor, unrealizedGainMinor: marketMinor - position.remainingCostMinor, source: "manual" as const };
 }
