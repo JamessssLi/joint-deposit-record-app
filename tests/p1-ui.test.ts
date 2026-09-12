@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Dashboard, InvestmentList } from "@/app/app/app-client";
+import { Dashboard, InvestmentList, PayerSelect } from "@/app/app/app-client";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const row = { id, title: "测试存入", entry_type: "deposit", amount_minor: 10000, currency: "USD", status: "posted", occurred_at: "2026-09-01", created_at: "2026-09-01T00:00:00Z" };
@@ -25,5 +25,15 @@ describe("P1 页面金额回归（服务端组件渲染，非双人E2E）", () =
     expect(html).toContain("$100.00");
     expect(html).toContain("待估值");
     expect(html).toContain("交易历史");
+  });
+  it("新建个人存入时显示账本成员作为实际付款人", () => {
+    const members = [
+      { user_id: id, profiles: { display_name: "顾言" } },
+      { user_id: "00000000-0000-4000-8000-000000000002", profiles: { display_name: "林知夏" } },
+    ];
+    const html = renderToStaticMarkup(createElement(PayerSelect, { members, userId: id, value: id, onChange: () => {} }));
+    expect(html).toContain("实际付款人");
+    expect(html).toContain("顾言（我）");
+    expect(html).toContain("林知夏");
   });
 });

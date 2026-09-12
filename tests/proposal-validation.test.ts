@@ -9,12 +9,20 @@ const base = {
   idempotencyKey: "00000000-0000-4000-8000-000000000002",
 };
 const investmentId = "00000000-0000-4000-8000-000000000003";
+const payerMemberId = "00000000-0000-4000-8000-000000000004";
 
 describe("按提案类型校验 AC-02/05/21/76", () => {
   it("共同消费必须有类别且金额为正", () => {
     expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 100, category: "餐饮" }).success).toBe(true);
     expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 100 }).success).toBe(false);
     expect(proposalSchema.safeParse({ ...base, type: "expense", amountMinor: 0, category: "餐饮" }).success).toBe(false);
+  });
+
+  it("个人存入与成员代付必须明确实际付款人", () => {
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, payerMemberId }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100 }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "reimbursement", amountMinor: 100, category: "餐饮", payerMemberId }).success).toBe(true);
+    expect(proposalSchema.safeParse({ ...base, type: "reimbursement", amountMinor: 100, category: "餐饮" }).success).toBe(false);
   });
 
   it("买入必须有标的、数量及实际总扣款，参考价可选", () => {
@@ -41,8 +49,8 @@ describe("按提案类型校验 AC-02/05/21/76", () => {
   });
 
   it("拒绝多余字段、非UUID幂等键和非法日期文本", () => {
-    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, unexpected: true }).success).toBe(false);
-    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, idempotencyKey: "draft-1" }).success).toBe(false);
-    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, occurredAt: "09/12/2026" }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, payerMemberId, unexpected: true }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, payerMemberId, idempotencyKey: "draft-1" }).success).toBe(false);
+    expect(proposalSchema.safeParse({ ...base, type: "deposit", amountMinor: 100, payerMemberId, occurredAt: "09/12/2026" }).success).toBe(false);
   });
 });

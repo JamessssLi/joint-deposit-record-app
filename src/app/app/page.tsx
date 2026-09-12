@@ -18,7 +18,7 @@ export default async function LedgerPage() {
     supabase.from("proposals").select("*").eq("household_id", householdId).order("submitted_at", { ascending: false }),
     supabase.from("investments").select("*").eq("household_id", householdId).order("created_at"),
     supabase.from("investment_valuations").select("*").eq("household_id", householdId).order("value_date"),
-    supabase.from("household_members").select("user_id, role, profiles(display_name)").eq("household_id", householdId),
+    supabase.from("household_members").select("user_id, role, profiles(display_name)").eq("household_id", householdId).eq("active", true),
   ]);
   if (results.some((result) => result.error)) throw new Error("账本读取失败，请重试；本次未生成余额");
   const [{ data: entries }, { data: proposals }, { data: investments }, { data: valuations }, { data: members }] = results;

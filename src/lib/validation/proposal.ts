@@ -11,14 +11,15 @@ const common = {
 };
 const category = z.string().trim().min(1).max(60);
 const investmentId = z.string().uuid();
+const memberId = z.string().uuid();
 const quantityMilli = z.number().int().positive().max(9_999_999_999_999);
 const referencePriceTenThousandths = z.number().int().positive().max(999_999_999_999).optional();
 
 export const proposalSchema = z.discriminatedUnion("type", [
-  z.object({ ...common, type: z.literal("deposit"), amountMinor: positiveMoney }).strict(),
+  z.object({ ...common, type: z.literal("deposit"), amountMinor: positiveMoney, payerMemberId: memberId }).strict(),
   z.object({ ...common, type: z.literal("expense"), amountMinor: positiveMoney, category }).strict(),
   z.object({ ...common, type: z.literal("expense_refund"), amountMinor: positiveMoney, category: category.optional() }).strict(),
-  z.object({ ...common, type: z.literal("reimbursement"), amountMinor: positiveMoney, category }).strict(),
+  z.object({ ...common, type: z.literal("reimbursement"), amountMinor: positiveMoney, category, payerMemberId: memberId }).strict(),
   z.object({ ...common, type: z.literal("settlement"), amountMinor: positiveMoney }).strict(),
   z.object({ ...common, type: z.literal("investment_buy"), amountMinor: positiveMoney, investmentId, quantityMilli, unitPriceTenThousandths: referencePriceTenThousandths }).strict(),
   z.object({ ...common, type: z.literal("investment_sell"), amountMinor: z.number().int().nonnegative().max(9_999_999_999), investmentId, quantityMilli, unitPriceTenThousandths: referencePriceTenThousandths }).strict(),

@@ -103,7 +103,7 @@ begin
   if payload_input ? 'unitValueMinor' and payload_input ? 'unitValueTenThousandths' then raise exception 'ambiguous valuation'; end if;
   if (payload_input ? 'unitPriceMinor' or payload_input ? 'unitPriceTenThousandths') and payload_type not in ('investment_buy','investment_sell') then raise exception 'reference price is not allowed'; end if;
   if (payload_input ? 'unitValueMinor' or payload_input ? 'unitValueTenThousandths') and payload_type <> 'investment_valuation' then raise exception 'valuation is not allowed'; end if;
-  if payload_input ? 'payerMemberId' and payload_type <> 'reimbursement' then raise exception 'payer is not allowed'; end if;
+  if payload_input ? 'payerMemberId' and payload_type not in ('deposit','reimbursement') then raise exception 'payer is not allowed'; end if;
   if payload_input ? 'payeeMemberId' and payload_type <> 'settlement' then raise exception 'payee is not allowed'; end if;
 
   if payload_type in ('investment_buy','investment_sell','dividend','investment_valuation') then
@@ -138,6 +138,10 @@ begin
       raise exception 'valuation is required';
     end if;
     if valuation_1e4 <= 0 or valuation_1e4 > 999999999999 then raise exception 'invalid valuation'; end if;
+  end if;
+
+  if payload_type in ('deposit','reimbursement') and jsonb_typeof(payload_input->'payerMemberId') is distinct from 'string' then
+    raise exception 'payer is required';
   end if;
 
   if payload_input ? 'payerMemberId' and (
